@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Chart.js for graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Performance Report</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar" id="sidebar">
+        <button class="hamburger" onclick="toggleSidebar()">☰</button>
+        <h2>Employee Management</h2>
+        <button onclick="window.location.reload()">Dashboard</button>
+        <button onclick="showPopup('addEmp')">Add Employee</button>
+        <button onclick="showPopup('delEmp')">Delete Employee</button>
+        <button onclick="showPopup('updateEmp')">Update Employee</button>
+        <button onclick="toggleMode()">Dark Mode</button>
+    </div>
+
+    <!-- Popup Overlay for modals -->
+    <div id="popupOverlay" class="popup-overlay"></div>
+
+    <!-- Add Employee Popup -->
+    <div class="popup" id="addEmp">
+        <form id="addEmpForm" onsubmit="return validateAndSubmit('addEmp');">
+            <span class="close-btn" onclick="closePopup('addEmp')">&times;</span>
+            <h2>Add Employee</h2>
+            <div id="addEmpError" class="form-error"></div>
+            <label for="emp_id">Employee ID:</label>
+            <input type="number" id="emp_id" name="emp_id" required>
+            <label for="name">Name:</label>
+            <input type="text" id="name" name="name" required>
+            <label for="sales">Monthly Sales:</label>
+            <input type="number" id="sales" name="sales" required>
+            <label for="rating">Rating (1-10):</label>
+            <input type="number" id="rating" name="rating" min="1" max="10" required>
+            <div class="popup-btn-row">
+                <button type="submit">Add</button>
+                <button type="button" onclick="closePopup('addEmp')">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Delete Employee Popup -->
+    <div class="popup" id="delEmp">
+        <form id="delEmpForm" onsubmit="return validateAndSubmit('delEmp');">
+            <span class="close-btn" onclick="closePopup('delEmp')">&times;</span>
+            <h2>Delete Employee</h2>
+            <div id="delEmpError" class="form-error"></div>
+            <label for="delete_id">Employee ID:</label>
+            <input type="number" id="delete_id" name="delete_id" required>
+            <div class="popup-btn-row">
+                <button type="submit">Delete</button>
+                <button type="button" onclick="closePopup('delEmp')">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Update Employee Popup -->
+    <div class="popup" id="updateEmp">
+        <form id="updateEmpForm" onsubmit="return validateAndSubmit('updateEmp');">
+            <span class="close-btn" onclick="closePopup('updateEmp')">&times;</span>
+            <h2>Update Employee</h2>
+            <div id="updateEmpError" class="form-error"></div>
+            <label for="update_id">Employee ID:</label>
+            <input type="number" id="update_id" name="update_id" required>
+            <label for="update_name">New Name:</label>
+            <input type="text" id="update_name" name="update_name">
+            <label for="update_sales">New Monthly Sales:</label>
+            <input type="number" id="update_sales" name="update_sales">
+            <label for="update_rating">New Rating (1-10):</label>
+            <input type="number" id="update_rating" name="update_rating" min="1" max="10">
+            <div class="popup-btn-row">
+                <button type="submit">Update</button>
+                <button type="button" onclick="closePopup('updateEmp')">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Confirmation Popup for Delete -->
+    <div class="popup" id="deleteConfirmPopup" style="display:none;">
+        <span class="close-btn" onclick="closeDeleteConfirm()">&times;</span>
+        <h2>Confirm Delete</h2>
+        <p>Are you sure you want to delete this employee?</p>
+        <div class="popup-btn-row">
+            <button type="button" onclick="confirmDeleteEmp()">Yes, Delete</button>
+            <button type="button" onclick="closeDeleteConfirm()">Cancel</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <h1 class="title-box">Employee Performance Report</h1>
+
+        <!-- Employee Table with Column Titles -->
+        <h2>Employee Table</h2>
+        <input type="text" id="searchBox" placeholder="Search by name or ID..." oninput="filterTable()">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID &#8593;</th>
+                    <th>Name</th>
+                    <th>Monthly Sales (₹)</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Edit</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Table rows will be rendered by JS -->
+            </tbody>
+        </table>
+
+        <!-- Company Performance Stats as Cards -->
+        <h2>Company Performance</h2>
+        <div class="stats-cards">
+            <div class="stat-card" id="totalSalesCard">
+                <div class="stat-title">Total Monthly Sales</div>
+                <div class="stat-value" id="totalSalesValue">₹{{ total_sales }}</div>
+            </div>
+            <div class="stat-card" id="avgSalesCard">
+                <div class="stat-title">Average Monthly Sales</div>
+                <div class="stat-value" id="avgSalesValue">₹{{ avg_sales }}</div>
+            </div>
+            <div class="stat-card" id="aboveAvgCard">
+                <div class="stat-title">Above Avg Sales</div>
+                <div class="stat-value" id="aboveAvgValue">{{ above_avg }}</div>
+            </div>
+            <div class="stat-card" id="belowAvgCard">
+                <div class="stat-title">Below Avg Sales</div>
+                <div class="stat-value" id="belowAvgValue">{{ below_avg }}</div>
+            </div>
+        </div>
+
+        <!-- Employee Classification with Badges -->
+        <h2>Employee Classification</h2>
+        <div class="classification-cards">
+            <div class="class-card excellent">
+                <div class="class-title">
+                    <span class="badge excellent-badge">Excellent (8-10)</span>
+                    <span class="class-count" id="excellentCount">{{ categories["Excellent (8-10)"]["count"] }}</span>
+                </div>
+                <div class="class-names" id="excellentNames">
+                    {% for name in categories["Excellent (8-10)"]["names"] %}
+                        <span class="chip excellent-chip">{{ name }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="class-card good">
+                <div class="class-title">
+                    <span class="badge good-badge">Good (5-7)</span>
+                    <span class="class-count" id="goodCount">{{ categories["Good (5-7)"]["count"] }}</span>
+                </div>
+                <div class="class-names" id="goodNames">
+                    {% for name in categories["Good (5-7)"]["names"] %}
+                        <span class="chip good-chip">{{ name }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="class-card needs">
+                <div class="class-title">
+                    <span class="badge needs-badge">Needs Improvement</span>
+                    <span class="class-count" id="needsCount">{{ categories["Needs Improvement (Below 5)"]["count"] }}</span>
+                </div>
+                <div class="class-names" id="needsNames">
+                    {% for name in categories["Needs Improvement (Below 5)"]["names"] %}
+                        <span class="chip needs-chip">{{ name }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Graphs -->
+        <h2>Performance Graphs</h2>
+        <div class="graphs-row">
+            <div class="graph-block">
+                <div style="text-align:right;">
+                    <label for="salesSize">Graph Size:</label>
+                    <select id="salesSize" onchange="setGraphSize('salesChart', this.value)">
+                        <option value="320">Small</option>
+                        <option value="480" selected>Medium</option>
+                        <option value="640">Large</option>
+                    </select>
+                </div>
+                <div class="graph-container" id="salesChartContainer">
+                    <canvas id="salesChart"></canvas>
+                </div>
+            </div>
+            <div class="graph-block">
+                <div class="graph-container" id="ratingChartContainer">
+                    <canvas id="ratingChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Toggle dark mode
+    function toggleMode() {
+        document.body.classList.toggle("dark-mode");
+    }
+
+    // Show popup and overlay
+    function showPopup(popupId) {
+        document.getElementById(popupId).style.display = "block";
+        document.getElementById("popupOverlay").style.display = "block";
+        clearFormError(popupId);
+
+        // Auto-clear form fields except for update (edit)
+        if (popupId === "addEmp") {
+            document.getElementById("addEmpForm").reset();
+        } else if (popupId === "delEmp") {
+            document.getElementById("delEmpForm").reset();
+        }
+        // For updateEmp, fields are filled by openEditPopup
+
+        // Focus first input
+        if (popupId === "addEmp") {
+            document.getElementById("emp_id").focus();
+        } else if (popupId === "delEmp") {
+            document.getElementById("delete_id").focus();
+        } else if (popupId === "updateEmp") {
+            document.getElementById("update_id").focus();
+        }
+    }
+
+    // Hide popup and overlay
+    function closePopup(popupId) {
+        document.getElementById(popupId).style.display = "none";
+        document.getElementById("popupOverlay").style.display = "none";
+        clearFormError(popupId);
+    }
+
+    // Sidebar collapse/expand
+    function toggleSidebar() {
+        var sidebar = document.getElementById("sidebar");
+        var mainContent = document.querySelector(".main");
+        sidebar.classList.toggle("collapsed");
+        mainContent.classList.toggle("expanded");
+    }
+
+    // Clear error message for a popup
+    function clearFormError(popupId) {
+        let errorDiv = document.getElementById(popupId + "Error");
+        if (errorDiv) {
+            errorDiv.innerText = "";
+            errorDiv.style.display = "none";
+        }
+    }
+
+    // Validate and submit form for add, delete, update employee
+    function validateAndSubmit(action) {
+        let valid = true;
+        let errorMsg = "";
+        let formData;
+        if (action === "addEmp") {
+            let emp_id = document.getElementById("emp_id").value.trim();
+            let name = document.getElementById("name").value.trim();
+            let sales = document.getElementById("sales").value.trim();
+            let rating = document.getElementById("rating").value.trim();
+            if (!emp_id || !name || !sales || !rating) {
+                errorMsg = "All fields are required.";
+                valid = false;
+            } else if (parseInt(rating) < 1 || parseInt(rating) > 10) {
+                errorMsg = "Rating must be between 1 and 10.";
+                valid = false;
+            } else if (parseInt(sales) < 0) {
+                errorMsg = "Sales cannot be negative.";
+                valid = false;
+            }
+            formData = new FormData(document.getElementById("addEmpForm"));
+            formData.append("action", "add");
+        } else if (action === "delEmp") {
+            let delete_id = document.getElementById("delete_id").value.trim();
+            if (!delete_id) {
+                errorMsg = "Employee ID is required.";
+                valid = false;
+            }
+            formData = new FormData(document.getElementById("delEmpForm"));
+            formData.append("action", "delete");
+        } else if (action === "updateEmp") {
+            let update_id = document.getElementById("update_id").value.trim();
+            let update_sales = document.getElementById("update_sales").value.trim();
+            let update_rating = document.getElementById("update_rating").value.trim();
+            if (!update_id) {
+                errorMsg = "Employee ID is required.";
+                valid = false;
+            } else if (update_rating && (parseInt(update_rating) < 1 || parseInt(update_rating) > 10)) {
+                errorMsg = "Rating must be between 1 and 10.";
+                valid = false;
+            } else if (update_sales && parseInt(update_sales) < 0) {
+                errorMsg = "Sales cannot be negative.";
+                valid = false;
+            }
+            formData = new FormData(document.getElementById("updateEmpForm"));
+            formData.append("action", "update");
+        }
+        if (!valid) {
+            let errorDiv = document.getElementById(action + "Error");
+            errorDiv.innerText = errorMsg;
+            errorDiv.style.display = "block";
+            return false;
+        }
+        // Submit via fetch
+        fetch("/", {
+            method: "POST",
+            body: formData
+        }).then(response => {
+            if (!response.ok) {
+                response.text().then(text => {
+                    let errorDiv = document.getElementById(action + "Error");
+                    errorDiv.innerText = text;
+                    errorDiv.style.display = "block";
+                });
+                return;
+            }
+            closePopup(action);
+            refreshTable();
+        });
+        return false;
+    }
+
+    // Refresh table and graphs after any change
+    function refreshTable() {
+        fetchAndRenderData();
+    }
+
+    // Chart.js chart objects
+    let salesChart, ratingChart;
+    let allEmployees = []; // For search/filter
+
+    // Fetch data from backend and render table, stats, and charts
+    async function fetchAndRenderData() {
+        const res = await fetch('/api/employees');
+        const data = await res.json();
+
+        // Sort employees by ID before rendering
+        const sortedEmployees = data.employees.sort((a, b) => a.id - b.id);
+        allEmployees = sortedEmployees; // Save for filtering
+
+        renderTable(sortedEmployees, data);
+
+        // Update stats
+        document.getElementById("totalSalesValue").innerText = `₹${data.total_sales}`;
+        document.getElementById("avgSalesValue").innerText = `₹${data.avg_sales}`;
+        document.getElementById("aboveAvgValue").innerText = data.above_avg;
+        document.getElementById("belowAvgValue").innerText = data.below_avg;
+
+        // Update classification cards
+        const cats = data.categories;
+        document.getElementById("excellentCount").innerText = cats["Excellent (8-10)"].count;
+        document.getElementById("goodCount").innerText = cats["Good (5-7)"].count;
+        document.getElementById("needsCount").innerText = cats["Needs Improvement (Below 5)"].count;
+
+        document.getElementById("excellentNames").innerHTML = cats["Excellent (8-10)"].names.map(n => `<span class="chip excellent-chip">${n}</span>`).join('');
+        document.getElementById("goodNames").innerHTML = cats["Good (5-7)"].names.map(n => `<span class="chip good-chip">${n}</span>`).join('');
+        document.getElementById("needsNames").innerHTML = cats["Needs Improvement (Below 5)"].names.map(n => `<span class="chip needs-chip">${n}</span>`).join('');
+
+        // Destroy old charts before creating new ones
+        if (salesChart) salesChart.destroy();
+        if (ratingChart) ratingChart.destroy();
+
+        // Bar Chart for Monthly Sales
+        const salesCtx = document.getElementById('salesChart').getContext('2d');
+        salesChart = new Chart(salesCtx, {
+            type: 'bar',
+            data: {
+                labels: data.employee_names,
+                datasets: [{
+                    label: 'Monthly Sales (₹)',
+                    data: data.sales_data,
+                    backgroundColor: data.employee_names.map((_, i) =>
+                        `hsl(${i * 40 % 360}, 70%, 70%)`
+                    ),
+                    borderColor: '#065F46',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: 'Monthly Sales by Employee', font: { size: 22, weight: 'bold' } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ₹${context.parsed.y}`;
+                            }
+                        }
+                    }
+                },
+                animation: { duration: 2000, easing: 'easeOutElastic' },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        // Pie Chart for Rating Distribution with Employee Names in Tooltip
+        const ratingCtx = document.getElementById('ratingChart').getContext('2d');
+        ratingChart = new Chart(ratingCtx, {
+            type: 'pie',
+            data: {
+                labels: ["Excellent (8-10)", "Good (5-7)", "Needs Improvement (Below 5)"],
+                datasets: [{
+                    data: [
+                        cats["Excellent (8-10)"].count,
+                        cats["Good (5-7)"].count,
+                        cats["Needs Improvement (Below 5)"].count
+                    ],
+                    backgroundColor: ["#16A34A", "#FACC15", "#DC2626"],
+                    hoverOffset: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'bottom' },
+                    title: { display: true, text: 'Employee Rating Distribution', font: { size: 18 } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label;
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percent = ((value / total) * 100).toFixed(1);
+                                let names = [];
+                                if (label === "Excellent (8-10)") names = cats["Excellent (8-10)"].names;
+                                else if (label === "Good (5-7)") names = cats["Good (5-7)"].names;
+                                else if (label === "Needs Improvement (Below 5)") names = cats["Needs Improvement (Below 5)"].names;
+                                let base = `${label}: ${value} (${percent}%)`;
+                                if (names.length > 0) base += `\n${names.join(", ")}`;
+                                return base;
+                            }
+                        }
+                    }
+                },
+                animation: { duration: 1800, easing: 'easeInOutCubic' }
+            }
+        });
+    }
+
+    // Store the employee ID to delete when confirmation is shown
+    let pendingDeleteEmpId = null;
+
+    // Render the employee table, including Edit and Delete buttons
+    function renderTable(employees, data) {
+        const tbody = document.querySelector("table tbody");
+        tbody.innerHTML = "";
+        if (employees.length === 0) {
+            const row = document.createElement("tr");
+            row.innerHTML = `<td colspan="7" style="text-align:center;color:#888;">No employees found.</td>`;
+            tbody.appendChild(row);
+            return;
+        }
+        employees.forEach(emp => {
+            let row = document.createElement("tr");
+            if (data.top_performer && emp.id === data.top_performer.id) row.classList.add("top-performer");
+            if (data.lowest_performer && emp.id === data.lowest_performer.id) row.classList.add("lowest-performer");
+            row.innerHTML = `
+                <td>${emp.id}</td>
+                <td>${emp.name}</td>
+                <td>₹${emp.monthly_sales}</td>
+                <td>${emp.rating}</td>
+                <td>
+                    ${data.top_performer && emp.id === data.top_performer.id ? "⭐ Top Performer" : ""}
+                    ${data.lowest_performer && emp.id === data.lowest_performer.id ? "⚠️ Lowest Performer" : ""}
+                </td>
+                <td>
+                    <button class="edit-btn" onclick="openEditPopup(${emp.id})">Edit</button>
+                </td>
+                <td>
+                    <button class="delete-btn" title="Delete" onclick="showDeleteConfirm(${emp.id})">
+                        <span class="delete-icon">&#128465;</span>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // Show confirmation popup for delete
+    function showDeleteConfirm(empId) {
+        pendingDeleteEmpId = empId;
+        document.getElementById("deleteConfirmPopup").style.display = "block";
+        document.getElementById("popupOverlay").style.display = "block";
+    }
+
+    // Hide confirmation popup
+    function closeDeleteConfirm() {
+        pendingDeleteEmpId = null;
+        document.getElementById("deleteConfirmPopup").style.display = "none";
+        document.getElementById("popupOverlay").style.display = "none";
+    }
+
+    // Actually delete the employee after confirmation
+    function confirmDeleteEmp() {
+        if (!pendingDeleteEmpId) return;
+        // Fill and submit the delete form programmatically
+        document.getElementById("delete_id").value = pendingDeleteEmpId;
+        validateAndSubmit('delEmp');
+        closeDeleteConfirm();
+    }
+
+    // Filter table by search box
+    function filterTable() {
+        const query = document.getElementById("searchBox").value.trim().toLowerCase();
+        if (!allEmployees.length) return;
+        const filtered = allEmployees.filter(emp =>
+            emp.name.toLowerCase().includes(query) ||
+            emp.id.toString().includes(query)
+        );
+        // Fetch latest data for status highlighting
+        fetch('/api/employees').then(res => res.json()).then(data => {
+            renderTable(filtered, data);
+        });
+    }
+
+    // Open update popup and pre-fill with employee data
+    function openEditPopup(empId) {
+        const emp = allEmployees.find(e => e.id === empId);
+        if (!emp) return;
+        document.getElementById("update_id").value = emp.id;
+        document.getElementById("update_name").value = emp.name;
+        document.getElementById("update_sales").value = emp.monthly_sales;
+        document.getElementById("update_rating").value = emp.rating;
+        showPopup('updateEmp');
+    }
+
+    // On page load, render everything
+    window.onload = fetchAndRenderData;
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "Escape") {
+            ["addEmp", "delEmp", "updateEmp"].forEach(closePopup);
+        }
+    });
+
+    // Set graph size for sales chart
+    function setGraphSize(chartId, size) {
+        const container = document.getElementById(chartId + "Container");
+        container.style.height = size + "px";
+        // Optionally, trigger chart resize:
+        if (chartId === "salesChart" && salesChart) salesChart.resize();
+        if (chartId === "ratingChart" && ratingChart) ratingChart.resize();
+    }
+    </script>
+</body>
+</html>
